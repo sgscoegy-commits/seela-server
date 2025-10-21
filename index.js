@@ -1,6 +1,6 @@
-// index.js
 import express from "express";
 import cors from "cors";
+import fetch from "node-fetch"; // إضافة node-fetch لإصلاح مشكلة fetch
 
 const app = express();
 app.use(cors());
@@ -77,7 +77,51 @@ async function chatWithGemini(message) {
   }
 }
 
-// ====== نقطة النهاية الرئيسية ======
+// ====== GET endpoint للـ testing من المتصفح ======
+app.get("/api/sila", async (req, res) => {
+  const { message, category, weight, height } = req.query; // جلب البيانات من query parameters
+
+  // لو مفيش parameters، نرجع تعليمات
+  if (!message && !category && !weight && !height) {
+    return res.json({
+      reply: "مرحبًا! استخدم الرابط بالشكل ده: /api/sila?message=تيشيرت أو /api/sila?category=men&weight=80&height=175 😊",
+    });
+  }
+
+  // تحويل weight و height لأرقام
+  const parsedWeight = parseFloat(weight);
+  const parsedHeight = parseFloat(height);
+
+  // لو في category و weight و height
+  if (category && weight && height && !isNaN(parsedWeight) && !isNaN(parsedHeight)) {
+    const suggestion = suggestSize(category, parsedWeight, parsedHeight);
+    return res.json({ reply: `المقاس الأنسب ليك هو ${suggestion} 👗` });
+  }
+
+  // لو في message يحتوي على "شنطة" أو "تيشيرت"
+  if (message && /شنطة|تيشيرت/i.test(message)) { // استخدام regex لتغطية صيغ مختلفة
+    const products = await getProducts(message);
+    if (products.length > 0) {
+      const reply = products
+        .map((p) => `🛍️ ${p.name} - ${p.price} ج.م [رابط المنتج](${p.permalink})`)
+        .join("\n");
+      return res.json({ reply });
+    } else {
+      return res.json({ reply: "معلش، مفيش منتجات مطابقة لـ '" + message + "' 😔" });
+    }
+  }
+
+  // لو مفيش شروط مطابقة، نروح لـ Gemini
+  if (message) {
+    const reply = await chatWithGemini(message);
+    return res.json({ reply });
+  }
+
+  // لو في بيانات ناقصة
+  return res.json({ reply: "برجاء إدخال بيانات كاملة (message أو category/weight/height) 😊" });
+});
+
+// ====== POST endpoint (يبقى زي ما هو للـ frontend أو التطبيقات) ======
 app.post("/api/sila", async (req, res) => {
   const { message, category, weight, height } = req.body;
 
@@ -100,6 +144,7 @@ app.post("/api/sila", async (req, res) => {
   res.json({ reply });
 });
 
+// ====== Health check ======
 app.get("/", (req, res) => res.send("سيلا شغالة ✅"));
 
 export default app;
